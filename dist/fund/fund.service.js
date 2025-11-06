@@ -9,21 +9,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FundService = void 0;
 const common_1 = require("@nestjs/common");
 let FundService = class FundService {
-    create(createFundDto) {
-        return 'This action adds a new fund';
-    }
-    findAll() {
-        return `This action returns all fund`;
-    }
-    findOne(id) {
-        return `This action returns a #${id} fund`;
-    }
-    update(id, updateFundDto) {
-        return `This action updates a #${id} fund`;
-    }
-    remove(id) {
-        return `This action removes a #${id} fund`;
-    }
 };
 exports.FundService = FundService;
 exports.FundService = FundService = __decorate([

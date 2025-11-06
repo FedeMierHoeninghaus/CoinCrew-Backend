@@ -26,16 +26,45 @@ let UserService = class UserService {
         return safeUser;
     }
     async getUserById(userId) {
-        console.log("llegamos a getUserById", { userId });
         const { rows, rowCount } = await this.databaseService.query('select * from users where id = $1', [userId]);
         if (rowCount === 0) {
             throw new common_1.NotFoundException('Usuario no encontrado');
         }
         const user = rows[0];
         const { password: _, ...safeUser } = user;
-        console.log("devolviendo safeUser");
-        console.log("safeUser", safeUser);
         return safeUser;
+    }
+    async createTransaction(userId, userTransactionDto) {
+        console.log("llegamos a createTransaction", { userId, userTransactionDto });
+        const user = await this.getUserById(userId);
+        const { rows, rowCount } = await this.databaseService.query(`insert into user_transactions (
+            user_id,
+            currency,
+            tx_type,
+            amount,
+            tx_date,
+            description
+            )
+            values ($1, $2, $3, $4, $5, $6) returning *`, [user.id,
+            userTransactionDto.currency,
+            userTransactionDto.type,
+            userTransactionDto.amount,
+            userTransactionDto.date,
+            userTransactionDto.description,
+        ]);
+        if (rowCount === 0) {
+            throw new common_1.NotFoundException('Transacción no creada');
+        }
+        return rows[0];
+    }
+    async getUserTransactions(userId) {
+        const user = await this.getUserById(userId);
+        const { rows, rowCount } = await this.databaseService.query('select * from user_transactions where user_id = $1', [user.id]);
+        if (rowCount === 0) {
+            throw new common_1.NotFoundException('Transacciones no encontradas para el usuario');
+        }
+        console.log("rows", rows);
+        return rows;
     }
 };
 exports.UserService = UserService;

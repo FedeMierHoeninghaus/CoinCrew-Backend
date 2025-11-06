@@ -23,9 +23,14 @@ let UserController = class UserController {
     }
     async getUser(user) {
         const userId = user.userId;
-        console.log("llegamos a getUser", { user });
-        console.log("userId", userId.toString());
         return this.userService.getUserById(userId.toString());
+    }
+    createTransaction(userId, userTransactionDto) {
+        return this.userService.createTransaction(userId, userTransactionDto);
+    }
+    async getUserTransactions(userId) {
+        console.log("llegamos a getUserTransactions", { userId });
+        return this.userService.getUserTransactions(userId.toString());
     }
 };
 exports.UserController = UserController;
@@ -37,6 +42,21 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "getUser", null);
+__decorate([
+    (0, common_1.Post)(':id/transaction'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "createTransaction", null);
+__decorate([
+    (0, common_1.Get)(':id/transactions'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "getUserTransactions", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.Controller)('user'),
     __metadata("design:paramtypes", [user_service_1.UserService])

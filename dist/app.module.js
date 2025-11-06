@@ -15,6 +15,8 @@ const receipts_module_1 = require("./receipts/receipts.module");
 const checks_module_1 = require("./checks/checks.module");
 const auth_module_1 = require("./auth/auth.module");
 const user_module_1 = require("./user/user.module");
+const transactions_module_1 = require("./transactions/transactions.module");
+const account_module_1 = require("./account/account.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -30,6 +32,8 @@ exports.AppModule = AppModule = __decorate([
             checks_module_1.ChecksModule,
             auth_module_1.AuthModule,
             user_module_1.UserModule,
+            transactions_module_1.TransactionsModule,
+            account_module_1.AccountModule,
         ],
         controllers: [app_controller_1.AppController],
     })

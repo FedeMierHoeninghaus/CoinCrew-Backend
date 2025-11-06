@@ -1,11 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
 
-@Controller('user')
+@Controller('app')
 export class AppController {
-
-  @Get()
-  getPerfil(): string {
-    console.log("llegamos a getUser");
-    return '¡Hola! CoinCrew Backend está funcionando correctamente';
-  }
 }
