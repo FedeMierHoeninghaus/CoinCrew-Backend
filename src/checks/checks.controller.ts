@@ -9,6 +9,7 @@ export class ChecksController {
 
   @Post()
   create(@Body() createCheckDto: CreateCheckDto) {
+console.log('createCheckDto', createCheckDto);
     return this.checksService.create(createCheckDto);
   }
 

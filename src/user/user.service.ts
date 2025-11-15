@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
 import { UserTransactionDto } from './DTOs/user-transaction.dto';
+import { FundService } from 'src/fund/fund.service';
 @Injectable()
 export class UserService {
-    constructor(private readonly databaseService: DatabaseService) {}
+    constructor(private readonly databaseService: DatabaseService, private readonly fundService: FundService) {}
 
 
     //-----------validacuib del user-----------------------
@@ -30,66 +31,53 @@ export class UserService {
     }
 
     async createTransaction(userId: string, userTransactionDto: UserTransactionDto){
-        console.log("llegamos a createTransaction", {userId, userTransactionDto});
-        const user = await this.getUserById(userId);
-        const {rows, rowCount} = await this.databaseService.query(`insert into user_transactions (
-            user_id,
-            currency,
-            tx_type,
-            amount,
-            tx_date,
-            description
-            )
-            values ($1, $2, $3, $4, $5, $6) returning *`,
-             [user.id,
-                userTransactionDto.currency,
-                userTransactionDto.type,
-                userTransactionDto.amount, 
-                userTransactionDto.date, 
-                userTransactionDto.description,
-             ]);
-
-        if(rowCount === 0){
-            throw new NotFoundException('Transacción no creada');
-        }
-        return rows[0];
-    }
-/*
-        const fund = await this.databaseService.query(`select id from fund_accounts where currency = $1`, [userTransactionDto.currency]);
-        if(fund.rowCount === 0){
+        const client = await this.databaseService.getClient();
+        try {
+          await client.query('BEGIN');
+          const {rows: userRows} = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
+          if(userRows.length === 0){
+            throw new NotFoundException('Usuario no encontrado');
+          }
+          const user = userRows[0];
+        
+          // 1) insert en user_transactions → devuelve userTx
+          const { rows: txRows } = await client.query(
+            `INSERT INTO public.user_transactions
+               (user_id, currency, tx_type, amount, tx_date, description)
+             VALUES ($1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6)
+             RETURNING *;`,
+            [user.id, userTransactionDto.currency, userTransactionDto.type, userTransactionDto.amount, userTransactionDto.date ?? null, userTransactionDto.description ?? null]
+          );
+          const userTx = txRows[0];
+        
+          // 2) buscar fundId por moneda
+          const { rows: fundRows } = await client.query(
+            `SELECT id FROM public.fund_accounts WHERE currency = $1 LIMIT 1;`,
+            [userTransactionDto.currency],
+          );
+          if(fundRows.length === 0){
             throw new NotFoundException('Fondo no encontrado');
+          }
+          const fund = fundRows[0];
+        
+          // 3) asiento en caja (reutiliza la función de arriba)
+          await this.fundService.postFundMovement(client, {
+            fundId: fund.id,
+            userTxType: userTransactionDto.type,
+            amount: Number(userTransactionDto.amount),
+            date: userTransactionDto.date,
+            description: userTransactionDto.description ?? `Transacción de ${userTransactionDto.type} de ${user.name}`,
+            relatedUserTxId: userTx.id,
+            relatedCheckId: null,
+          });
+        
+          await client.query('COMMIT');
+          return userTx;
+        } catch (e) {
+          await client.query('ROLLBACK');
+          throw e;
+        } finally {
+          client.release();
         }
-        const fundId = fund.rows[0].id;
-        const movementType = userTransactionDto.transaction_type === 'CONTRIBUTION' ? 'WITHDRAWAL' : 'CONTRIBUTION';
-        const signedAmount = userTransactionDto.transaction_type === 'CONTRIBUTION' ? userTransactionDto.amount : -userTransactionDto.amount;
-        const insertMovement = await this.databaseService.query(`insert into cash_move (
-            fund_id,
-            movement_date,
-            movement_type,
-            amount,
-            description
-            )
-            values ($1, $2, $3, $4, $5)`,
-            [fundId,
-                new Date(),
-                movementType,
-                signedAmount,
-                userTransactionDto.description,
-            ]);
-        if(insertMovement.rowCount === 0){
-            throw new NotFoundException('Movimiento no creado');
-        }
-
-        return console.log("movimiento creado correctamente");*/
-    
-
-    async getUserTransactions(userId: string){
-        const user = await this.getUserById(userId);
-        const {rows, rowCount} = await this.databaseService.query('select * from user_transactions where user_id = $1', [user.id]);
-        if(rowCount === 0){
-            throw new NotFoundException('Transacciones no encontradas para el usuario');
-        }
-        console.log("rows", rows);
-        return rows;
     }
 }

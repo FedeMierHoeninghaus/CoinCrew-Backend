@@ -12,9 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const common_1 = require("@nestjs/common");
 const database_service_1 = require("../database/database.service");
+const fund_service_1 = require("../fund/fund.service");
 let UserService = class UserService {
-    constructor(databaseService) {
+    constructor(databaseService, fundService) {
         this.databaseService = databaseService;
+        this.fundService = fundService;
     }
     async validateUser(email, password) {
         const { rows, rowCount } = await this.databaseService.query('Select * from users where email = $1 and password = $2', [email, password]);
@@ -35,41 +37,48 @@ let UserService = class UserService {
         return safeUser;
     }
     async createTransaction(userId, userTransactionDto) {
-        console.log("llegamos a createTransaction", { userId, userTransactionDto });
-        const user = await this.getUserById(userId);
-        const { rows, rowCount } = await this.databaseService.query(`insert into user_transactions (
-            user_id,
-            currency,
-            tx_type,
-            amount,
-            tx_date,
-            description
-            )
-            values ($1, $2, $3, $4, $5, $6) returning *`, [user.id,
-            userTransactionDto.currency,
-            userTransactionDto.type,
-            userTransactionDto.amount,
-            userTransactionDto.date,
-            userTransactionDto.description,
-        ]);
-        if (rowCount === 0) {
-            throw new common_1.NotFoundException('Transacción no creada');
+        const client = await this.databaseService.getClient();
+        try {
+            await client.query('BEGIN');
+            const { rows: userRows } = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
+            if (userRows.length === 0) {
+                throw new common_1.NotFoundException('Usuario no encontrado');
+            }
+            const user = userRows[0];
+            const { rows: txRows } = await client.query(`INSERT INTO public.user_transactions
+               (user_id, currency, tx_type, amount, tx_date, description)
+             VALUES ($1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6)
+             RETURNING *;`, [user.id, userTransactionDto.currency, userTransactionDto.type, userTransactionDto.amount, userTransactionDto.date ?? null, userTransactionDto.description ?? null]);
+            const userTx = txRows[0];
+            const { rows: fundRows } = await client.query(`SELECT id FROM public.fund_accounts WHERE currency = $1 LIMIT 1;`, [userTransactionDto.currency]);
+            if (fundRows.length === 0) {
+                throw new common_1.NotFoundException('Fondo no encontrado');
+            }
+            const fund = fundRows[0];
+            await this.fundService.postFundMovement(client, {
+                fundId: fund.id,
+                userTxType: userTransactionDto.type,
+                amount: Number(userTransactionDto.amount),
+                date: userTransactionDto.date,
+                description: userTransactionDto.description ?? `Transacción de ${userTransactionDto.type} de ${user.name}`,
+                relatedUserTxId: userTx.id,
+                relatedCheckId: null,
+            });
+            await client.query('COMMIT');
+            return userTx;
         }
-        return rows[0];
-    }
-    async getUserTransactions(userId) {
-        const user = await this.getUserById(userId);
-        const { rows, rowCount } = await this.databaseService.query('select * from user_transactions where user_id = $1', [user.id]);
-        if (rowCount === 0) {
-            throw new common_1.NotFoundException('Transacciones no encontradas para el usuario');
+        catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
         }
-        console.log("rows", rows);
-        return rows;
+        finally {
+            client.release();
+        }
     }
 };
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [database_service_1.DatabaseService])
+    __metadata("design:paramtypes", [database_service_1.DatabaseService, fund_service_1.FundService])
 ], UserService);
 //# sourceMappingURL=user.service.js.map

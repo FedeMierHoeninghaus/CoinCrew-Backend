@@ -10,13 +10,16 @@ exports.FundModule = void 0;
 const common_1 = require("@nestjs/common");
 const fund_service_1 = require("./fund.service");
 const fund_controller_1 = require("./fund.controller");
+const database_module_1 = require("../database/database.module");
 let FundModule = class FundModule {
 };
 exports.FundModule = FundModule;
 exports.FundModule = FundModule = __decorate([
     (0, common_1.Module)({
+        imports: [database_module_1.DatabaseModule],
         controllers: [fund_controller_1.FundController],
         providers: [fund_service_1.FundService],
+        exports: [fund_service_1.FundService],
     })
 ], FundModule);
 //# sourceMappingURL=fund.module.js.map

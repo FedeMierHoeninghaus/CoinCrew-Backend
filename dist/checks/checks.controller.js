@@ -22,6 +22,7 @@ let ChecksController = class ChecksController {
         this.checksService = checksService;
     }
     create(createCheckDto) {
+        console.log('createCheckDto', createCheckDto);
         return this.checksService.create(createCheckDto);
     }
     findAll() {

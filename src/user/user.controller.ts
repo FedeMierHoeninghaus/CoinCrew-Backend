@@ -24,6 +24,6 @@ export class UserController {
     @Get(':id/transactions')
     async getUserTransactions(@Param('id') userId: string){
         console.log("llegamos a getUserTransactions", {userId});
-        return this.userService.getUserTransactions(userId.toString());
+        return ;
     }
 }

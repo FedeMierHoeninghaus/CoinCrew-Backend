@@ -16,8 +16,18 @@ let FundController = class FundController {
     constructor(fundService) {
         this.fundService = fundService;
     }
+    async getFunds() {
+        console.log('getFunds');
+        return this.fundService.getFunds();
+    }
 };
 exports.FundController = FundController;
+__decorate([
+    (0, common_1.Get)('getFunds'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], FundController.prototype, "getFunds", null);
 exports.FundController = FundController = __decorate([
     (0, common_1.Controller)('fund'),
     __metadata("design:paramtypes", [fund_service_1.FundService])

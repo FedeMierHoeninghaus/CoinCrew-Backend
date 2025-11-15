@@ -15,5 +15,6 @@ export class DatabaseService {
 
     async getClient() {
         return this.pool.connect();
+        
     }
 }

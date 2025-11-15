@@ -30,7 +30,7 @@ let UserController = class UserController {
     }
     async getUserTransactions(userId) {
         console.log("llegamos a getUserTransactions", { userId });
-        return this.userService.getUserTransactions(userId.toString());
+        return;
     }
 };
 exports.UserController = UserController;

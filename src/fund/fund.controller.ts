@@ -6,5 +6,9 @@ import { FundService } from './fund.service';
 export class FundController {
   constructor(private readonly fundService: FundService) {}
 
- 
+ @Get('getFunds')
+ async getFunds(){
+  console.log('getFunds');
+  return this.fundService.getFunds();
+ }
 }

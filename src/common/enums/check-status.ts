@@ -1,0 +1,9 @@
+export enum CheckStatus {
+    COMPRADO = 'COMPRADO',
+    HOLDING = 'HOLDING',
+    COBRADO = 'COBRADO',
+    RECHAZADO = 'RECHAZADO',
+    RECUPERADO = 'RECUPERADO',
+    CANCELADO = 'CANCELADO',
+  }
+  

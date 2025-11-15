@@ -8,5 +8,5 @@ export declare class UserController {
         email: string;
     }): Promise<any>;
     createTransaction(userId: string, userTransactionDto: UserTransactionDto): Promise<any>;
-    getUserTransactions(userId: string): Promise<any[]>;
+    getUserTransactions(userId: string): Promise<void>;
 }
