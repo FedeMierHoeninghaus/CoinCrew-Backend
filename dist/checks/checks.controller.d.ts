@@ -5,7 +5,7 @@ export declare class ChecksController {
     private readonly checksService;
     constructor(checksService: ChecksService);
     create(createCheckDto: CreateCheckDto): Promise<any>;
-    findAll(): string;
+    findAll(): Promise<any[]>;
     findOne(id: string): string;
     update(id: string, updateCheckDto: UpdateCheckDto): string;
     remove(id: string): string;

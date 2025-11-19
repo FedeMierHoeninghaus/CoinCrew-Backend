@@ -111,8 +111,17 @@ export class ChecksService {
       }
     }
 
-  findAll() {
-    return `This action returns all checks`;
+  async findAll() {
+    const client = await this.databaseService.getClient();
+    try {
+      const {rows: checks} = await client.query(`SELECT * FROM public.checks`);
+      console.log('checks', checks);
+      return checks;
+    } catch (error) {
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   findOne(id: number) {
