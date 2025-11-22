@@ -12,4 +12,5 @@ export declare class FundService {
         relatedCheckId?: string | null;
     }): Promise<any>;
     getFunds(): Promise<any[]>;
+    getProfits(): Promise<any[]>;
 }

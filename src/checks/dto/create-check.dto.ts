@@ -30,7 +30,8 @@ export class CreateCheckDto {
 
     @Type(() => Number)
     @IsNumber()
-    @IsPositive()
+    @IsOptional()
+    @Min(0)
     transfer_fee?: number = 0;
 
     @IsOptional()

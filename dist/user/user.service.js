@@ -75,6 +75,79 @@ let UserService = class UserService {
             client.release();
         }
     }
+    async getUserTransactions(userId) {
+        const { rows, rowCount } = await this.databaseService.query('select * from user_transactions where user_id = $1', [userId]);
+        if (rowCount === 0) {
+            throw new common_1.NotFoundException('Transacciones no encontradas');
+        }
+        return rows;
+    }
+    async findAll() {
+        const client = await this.databaseService.getClient();
+        try {
+            await client.query('BEGIN');
+            const { rows: users } = await client.query('select * from users');
+            const safeUsers = users.map(user => {
+                const { password: _, ...safeUser } = user;
+                return safeUser;
+            });
+            await client.query('COMMIT');
+            return safeUsers;
+        }
+        catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        }
+        finally {
+            client.release();
+        }
+    }
+    async createTransactionForUser(createTransactionDto) {
+        const client = await this.databaseService.getClient();
+        try {
+            await client.query('BEGIN');
+            const { rows: userRows } = await client.query('SELECT * FROM users WHERE id = $1', [createTransactionDto.userId]);
+            if (userRows.length === 0) {
+                throw new common_1.NotFoundException('Usuario no encontrado');
+            }
+            const user = userRows[0];
+            const { rows: txRows } = await client.query(`INSERT INTO public.user_transactions
+             (user_id, currency, tx_type, amount, tx_date, description)
+           VALUES ($1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6)
+           RETURNING *;`, [
+                user.id,
+                createTransactionDto.currency,
+                createTransactionDto.type,
+                createTransactionDto.amount,
+                createTransactionDto.date ?? null,
+                createTransactionDto.description ?? null
+            ]);
+            const userTx = txRows[0];
+            const { rows: fundRows } = await client.query(`SELECT id FROM public.fund_accounts WHERE currency = $1 LIMIT 1;`, [createTransactionDto.currency]);
+            if (fundRows.length === 0) {
+                throw new common_1.NotFoundException('Fondo no encontrado');
+            }
+            const fund = fundRows[0];
+            await this.fundService.postFundMovement(client, {
+                fundId: fund.id,
+                userTxType: createTransactionDto.type,
+                amount: Number(createTransactionDto.amount),
+                date: createTransactionDto.date,
+                description: createTransactionDto.description ?? `Transacción de ${createTransactionDto.type} de ${user.name}`,
+                relatedUserTxId: userTx.id,
+                relatedCheckId: null,
+            });
+            await client.query('COMMIT');
+            return userTx;
+        }
+        catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        }
+        finally {
+            client.release();
+        }
+    }
 };
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([

@@ -6,7 +6,8 @@ export declare class ChecksController {
     constructor(checksService: ChecksService);
     create(createCheckDto: CreateCheckDto): Promise<any>;
     findAll(): Promise<any[]>;
-    findOne(id: string): string;
-    update(id: string, updateCheckDto: UpdateCheckDto): string;
+    findOne(id: string): Promise<any>;
+    update(id: string, updateCheckDto: UpdateCheckDto): Promise<any>;
     remove(id: string): string;
+    getMovements(id: string): Promise<any[]>;
 }

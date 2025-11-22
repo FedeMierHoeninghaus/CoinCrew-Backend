@@ -8,7 +8,12 @@ export class FundController {
 
  @Get('getFunds')
  async getFunds(){
-  console.log('getFunds');
   return this.fundService.getFunds();
+ }
+
+ @Get('getProfits')
+ async getProfits(){
+  console.log('getProfits');
+  return this.fundService.getProfits();
  }
 }

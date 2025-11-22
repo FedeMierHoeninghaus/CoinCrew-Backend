@@ -3,6 +3,7 @@ import { UserService } from './user.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import {GetUser} from 'src/auth/decorators/get-user.decorator';
 import { UserTransactionDto } from './DTOs/user-transaction.dto';
+import { CreateTransactionForUserDto } from './DTOs/create-transaction-for-user.dto';
 
 @Controller('user')
 export class UserController {
@@ -23,7 +24,16 @@ export class UserController {
 
     @Get(':id/transactions')
     async getUserTransactions(@Param('id') userId: string){
-        console.log("llegamos a getUserTransactions", {userId});
-        return ;
+        return this.userService.getUserTransactions(userId);
+    }
+
+    @Get()
+    findAll(){
+        return this.userService.findAll();
+    }
+
+    @Post('createTransaction')
+    createTransactionForUser(@Body() createTransactionDto: CreateTransactionForUserDto){
+        return this.userService.createTransactionForUser(createTransactionDto);
     }
 }

@@ -6,7 +6,8 @@ export declare class ChecksService {
     constructor(databaseService: DatabaseService);
     create(createCheckDto: CreateCheckDto): Promise<any>;
     findAll(): Promise<any[]>;
-    findOne(id: number): string;
-    update(id: number, updateCheckDto: UpdateCheckDto): string;
+    findOne(id: string): Promise<any>;
+    update(id: string, updateCheckDto: UpdateCheckDto): Promise<any>;
     remove(id: number): string;
+    getMovements(id: string): Promise<any[]>;
 }

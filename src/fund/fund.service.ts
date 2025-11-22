@@ -43,4 +43,17 @@ export class FundService {
     console.log('rows', rows);
     return rows;
   }
+
+  async getProfits(){
+    console.log('getProfits service');
+    const client = await this.databaseService.getClient();
+    try {
+      const { rows } = await client.query('SELECT * FROM profit_allocations');
+      return rows;
+    } catch (error) {
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 }

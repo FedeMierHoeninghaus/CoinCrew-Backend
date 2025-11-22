@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateCheckDto } from './dto/create-check.dto';
 import { UpdateCheckDto } from './dto/update-check.dto';
 import { DatabaseService } from 'src/database/database.service';
+import { CheckStatus } from 'src/common/enums/check-status';
 @Injectable()
 export class ChecksService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -79,7 +80,10 @@ export class ChecksService {
         SELECT user_id, balance
         FROM balances
         WHERE balance > 0;`, [check[0].currency, check[0].purchase_date]);
-        const total = balance.reduce((acc, curr) => acc + curr.balance, 0);
+        
+        // Convertir balances a números antes de sumar
+        const total = balance.reduce((acc, curr) => acc + Number(curr.balance), 0);
+        
         if(total <= 0){
           throw new NotFoundException('No hay fondos disponibles');
         }
@@ -112,6 +116,7 @@ export class ChecksService {
     }
 
   async findAll() {
+    console.log('findAll service');
     const client = await this.databaseService.getClient();
     try {
       const {rows: checks} = await client.query(`SELECT * FROM public.checks`);
@@ -124,15 +129,193 @@ export class ChecksService {
     }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} check`;
+  async findOne(id: string) {
+    console.log("entramos a findOne service");
+    const client = await this.databaseService.getClient();
+    try {
+      const {rows: check} = await client.query(`SELECT * FROM public.checks WHERE id = $1`, [id]);
+      console.log('check', check);
+      return check[0];
+    } catch (error) {
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
-  update(id: number, updateCheckDto: UpdateCheckDto) {
-    return `This action updates a #${id} check`;
+  async update(id: string, updateCheckDto: UpdateCheckDto) {
+
+    const client = await this.databaseService.getClient();
+    try {
+      await client.query('BEGIN');
+
+      // Verificar que el cheque existe
+      const { rows: existingCheck } = await client.query(
+        `SELECT * FROM public.checks WHERE id = $1`,
+        [id]
+      );
+      if (existingCheck.length === 0) {
+        throw new NotFoundException('Cheque no encontrado');
+      }
+      //existe? si
+      const check = existingCheck[0];
+      const previousStatus = check.status;
+
+      // Construir la query de actualización dinámicamente
+      const updateFields: string[] = [];
+      const updateValues: any[] = [];
+      let paramIndex = 1;
+
+      if (updateCheckDto.status !== undefined) {
+        updateFields.push(`status = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.status);
+      }
+
+      if (updateCheckDto.maturity_date !== undefined) {
+        updateFields.push(`maturity_date = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.maturity_date);
+      }
+
+      if (updateCheckDto.platform_fee !== undefined) {
+        updateFields.push(`platform_fee = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.platform_fee);
+      }
+
+      if (updateCheckDto.transfer_fee !== undefined) {
+        updateFields.push(`transfer_fee = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.transfer_fee);
+      }
+
+      if (updateCheckDto.settled_date !== undefined) {
+        updateFields.push(`settled_date = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.settled_date);
+      }
+
+      if (updateFields.length === 0) {
+        await client.query('COMMIT');
+        return check; 
+      }
+
+      // Agregar el ID al final para el WHERE
+      updateValues.push(id);
+      const updateQuery = `
+        UPDATE public.checks
+        SET ${updateFields.join(', ')}
+        WHERE id = $${paramIndex}
+        RETURNING *;
+      `;
+
+      const { rows: updatedCheck } = await client.query(updateQuery, updateValues);
+
+      // Si el estado cambió a COBRADO, crear movimiento de caja y asignar ganancias
+      if (updateCheckDto.status === CheckStatus.COBRADO && previousStatus !== CheckStatus.COBRADO) {
+        if (!updateCheckDto.settled_date) {
+          throw new Error('La fecha de cobro (settled_date) es requerida cuando el estado es COBRADO');
+        }
+
+        // Obtener el fondo asociado
+        const { rows: fundAccounts } = await client.query(
+          `SELECT * FROM fund_accounts WHERE currency = $1`,
+          [check.currency]
+        );
+
+        if (fundAccounts.length === 0) {
+          throw new NotFoundException('Fondo no encontrado');
+        }
+
+        const fundId = fundAccounts[0].id;
+
+        // Crear movimiento de caja positivo por el valor nominal del cheque
+        await client.query(
+          `INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
+           VALUES ($1, $2::date, 'COBRO_CHEQUE', 'Cobro de cheque', $3, $4)`,
+          [fundId, updateCheckDto.settled_date, check.face_value, id]
+        );
+
+        // Usar valores actualizados si están disponibles, sino los originales
+        const finalCheck = updatedCheck[0] || check;
+        const transferFee = updateCheckDto.transfer_fee !== undefined 
+          ? updateCheckDto.transfer_fee 
+          : Number(finalCheck.transfer_fee || 0);
+        const platformFee = updateCheckDto.platform_fee !== undefined 
+          ? updateCheckDto.platform_fee 
+          : Number(finalCheck.platform_fee || 0);
+
+        // Calcular la ganancia: face_value - purchase_price - transfer_fee - platform_fee
+        const profit = Number(finalCheck.face_value) 
+          - Number(finalCheck.purchase_price) 
+          - transferFee 
+          - platformFee;
+
+        // Obtener todas las participaciones del cheque
+        const { rows: participations } = await client.query(
+          `SELECT user_id, share FROM public.check_participations WHERE check_id = $1`,
+          [id]
+        );
+
+        if (participations.length === 0) {
+          throw new NotFoundException('No se encontraron participaciones para este cheque');
+        }
+
+        // Distribuir la ganancia entre los participantes según su share
+        const allocationDate = updateCheckDto.settled_date || new Date().toISOString().split('T')[0];
+
+        for (const participation of participations) {
+          const userShare = Number(participation.share);
+          const allocationAmount = Number((profit * userShare).toFixed(2));
+
+          // Insertar asignación de ganancia en profit_allocations
+          await client.query(
+            `INSERT INTO public.profit_allocations 
+             (check_id, user_id, currency, allocation_amount, allocation_date)
+             VALUES ($1, $2, $3, $4, $5::date)`,
+            [
+              id,
+              participation.user_id,
+              finalCheck.currency,
+              allocationAmount,
+              allocationDate
+            ]
+          );
+          await client.query(
+            `INSERT INTO public.user_transactions
+             (user_id, currency, tx_type, amount, tx_date, description)
+             VALUES ($1, $2, 'CONTRIBUTION', $3, $4::date, $5)`,
+            [
+              participation.user_id,
+              finalCheck.currency,
+              allocationAmount,
+              allocationDate,
+              `Ganancia por cheque - Asignación de ganancia`
+            ]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return updatedCheck[0];
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   remove(id: number) {
     return `This action removes a #${id} check`;
+  }
+
+  async getMovements(id: string) {
+    console.log('getMovements service');
+    const client = await this.databaseService.getClient();
+    try {
+      const { rows } = await client.query('SELECT * FROM cash_movements WHERE related_check = $1', [id]);
+      return rows;
+    } catch (error) {
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

@@ -3,4 +3,5 @@ export declare class FundController {
     private readonly fundService;
     constructor(fundService: FundService);
     getFunds(): Promise<any[]>;
+    getProfits(): Promise<any[]>;
 }

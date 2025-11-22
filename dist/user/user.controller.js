@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const user_service_1 = require("./user.service");
 const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const get_user_decorator_1 = require("../auth/decorators/get-user.decorator");
+const create_transaction_for_user_dto_1 = require("./DTOs/create-transaction-for-user.dto");
 let UserController = class UserController {
     constructor(userService) {
         this.userService = userService;
@@ -29,8 +30,13 @@ let UserController = class UserController {
         return this.userService.createTransaction(userId, userTransactionDto);
     }
     async getUserTransactions(userId) {
-        console.log("llegamos a getUserTransactions", { userId });
-        return;
+        return this.userService.getUserTransactions(userId);
+    }
+    findAll() {
+        return this.userService.findAll();
+    }
+    createTransactionForUser(createTransactionDto) {
+        return this.userService.createTransactionForUser(createTransactionDto);
     }
 };
 exports.UserController = UserController;
@@ -57,6 +63,19 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "getUserTransactions", null);
+__decorate([
+    (0, common_1.Get)(),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Post)('createTransaction'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [create_transaction_for_user_dto_1.CreateTransactionForUserDto]),
+    __metadata("design:returntype", void 0)
+], UserController.prototype, "createTransactionForUser", null);
 exports.UserController = UserController = __decorate([
     (0, common_1.Controller)('user'),
     __metadata("design:paramtypes", [user_service_1.UserService])
