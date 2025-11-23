@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, ConflictException } from '@nestjs/common';
 import { DatabaseService } from 'src/database/database.service';
 import { UserTransactionDto } from './DTOs/user-transaction.dto';
 import { FundService } from 'src/fund/fund.service';
@@ -7,6 +7,43 @@ import { CreateTransactionForUserDto } from './DTOs/create-transaction-for-user.
 export class UserService {
     constructor(private readonly databaseService: DatabaseService, private readonly fundService: FundService) {}
 
+
+    //-----------crear usuario----------------------- 
+    async createUser(nombre: string, apellido: string, email: string, password: string){
+        const client = await this.databaseService.getClient();
+        try {
+            await client.query('BEGIN');
+            
+            // Verificar si el email ya existe
+            const {rows: existingUser} = await client.query(
+                'SELECT id FROM users WHERE email = $1',
+                [email]
+            );
+            
+            if(existingUser.length > 0){
+                throw new ConflictException('El email ya está registrado');
+            }
+            
+            // Crear el usuario
+            const {rows: newUser} = await client.query(
+                `INSERT INTO users (nombre, apellido, email, password)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING *`,
+                [nombre, apellido, email, password]
+            );
+            
+            await client.query('COMMIT');
+            
+            const user = newUser[0];
+            const {password: _, ...safeUser} = user;
+            return safeUser;
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    }
 
     //-----------validacuib del user-----------------------
     async validateUser(email: string, password: string){

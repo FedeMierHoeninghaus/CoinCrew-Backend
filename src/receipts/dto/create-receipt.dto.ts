@@ -1,5 +1,5 @@
 import { IsNotEmpty, IsNumber, IsString, IsEnum } from 'class-validator';
-import { ReceiptCurrency } from '../entities/receipt.entity';
+import { ReceiptCurrency } from '../Entities/receipt.entity';
 
 export class CreateReceiptDto {
     @IsNotEmpty({ message: 'El monto es requerido' })
