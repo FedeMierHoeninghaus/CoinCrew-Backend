@@ -13,17 +13,47 @@ exports.UserService = void 0;
 const common_1 = require("@nestjs/common");
 const database_service_1 = require("../database/database.service");
 const fund_service_1 = require("../fund/fund.service");
+const bcrypt = require("bcrypt");
 let UserService = class UserService {
     constructor(databaseService, fundService) {
         this.databaseService = databaseService;
         this.fundService = fundService;
     }
+    async createUser(first_name, last_name, email, password) {
+        const client = await this.databaseService.getClient();
+        try {
+            await client.query('BEGIN');
+            const { rows: existingUser } = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+            if (existingUser.length > 0) {
+                throw new common_1.ConflictException('El email ya está registrado');
+            }
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const { rows: newUser } = await client.query(`INSERT INTO users (first_name, last_name, email, password)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING *`, [first_name, last_name, email, hashedPassword]);
+            await client.query('COMMIT');
+            const user = newUser[0];
+            const { password: _, ...safeUser } = user;
+            return safeUser;
+        }
+        catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        }
+        finally {
+            client.release();
+        }
+    }
     async validateUser(email, password) {
-        const { rows, rowCount } = await this.databaseService.query('Select * from users where email = $1 and password = $2', [email, password]);
+        const { rows, rowCount } = await this.databaseService.query('SELECT * FROM users WHERE email = $1', [email]);
         if (rowCount === 0) {
             throw new common_1.UnauthorizedException('Credenciales incorrectas');
         }
         const user = rows[0];
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            throw new common_1.UnauthorizedException('Credenciales incorrectas');
+        }
         const { password: _, ...safeUser } = user;
         return safeUser;
     }

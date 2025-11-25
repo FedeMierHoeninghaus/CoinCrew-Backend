@@ -30,6 +30,7 @@ exports.DatabaseModule = DatabaseModule = __decorate([
                             },
                         });
                     }
+                    return null;
                 },
                 inject: [config_1.ConfigService],
             }, database_service_1.DatabaseService,

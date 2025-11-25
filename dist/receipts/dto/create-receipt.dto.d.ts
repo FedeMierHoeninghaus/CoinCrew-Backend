@@ -1,4 +1,4 @@
-import { ReceiptCurrency } from '../entities/receipt.entity';
+import { ReceiptCurrency } from '../Entities/receipt.entity';
 export declare class CreateReceiptDto {
     monto: number;
     tipo_moneda: ReceiptCurrency;

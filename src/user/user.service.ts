@@ -3,13 +3,14 @@ import { DatabaseService } from 'src/database/database.service';
 import { UserTransactionDto } from './DTOs/user-transaction.dto';
 import { FundService } from 'src/fund/fund.service';
 import { CreateTransactionForUserDto } from './DTOs/create-transaction-for-user.dto';
+import * as bcrypt from 'bcrypt';
 @Injectable()
 export class UserService {
     constructor(private readonly databaseService: DatabaseService, private readonly fundService: FundService) {}
 
 
     //-----------crear usuario----------------------- 
-    async createUser(nombre: string, apellido: string, email: string, password: string){
+    async createUser(first_name: string, last_name: string, email: string, password: string){
         const client = await this.databaseService.getClient();
         try {
             await client.query('BEGIN');
@@ -25,11 +26,12 @@ export class UserService {
             }
             
             // Crear el usuario
+            const hashedPassword = await bcrypt.hash(password, 10);
             const {rows: newUser} = await client.query(
-                `INSERT INTO users (nombre, apellido, email, password)
+                `INSERT INTO users (first_name, last_name, email, password)
                  VALUES ($1, $2, $3, $4)
                  RETURNING *`,
-                [nombre, apellido, email, password]
+                [first_name, last_name, email, hashedPassword]
             );
             
             await client.query('COMMIT');
@@ -47,11 +49,15 @@ export class UserService {
 
     //-----------validacuib del user-----------------------
     async validateUser(email: string, password: string){
-        const {rows, rowCount} = await this.databaseService.query('Select * from users where email = $1 and password = $2', [email, password]);
+        const {rows, rowCount} = await this.databaseService.query('SELECT * FROM users WHERE email = $1', [email]);
         if(rowCount === 0){
             throw new UnauthorizedException('Credenciales incorrectas');
         }
         const user = rows[0];
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if(!isPasswordValid){
+            throw new UnauthorizedException('Credenciales incorrectas');
+        }
         const {password: _, ...safeUser} = user;
         return safeUser;
     }

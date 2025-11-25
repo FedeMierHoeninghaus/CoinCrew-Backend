@@ -11,7 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateReceiptDto = void 0;
 const class_validator_1 = require("class-validator");
-const receipt_entity_1 = require("../entities/receipt.entity");
+const receipt_entity_1 = require("../Entities/receipt.entity");
 class CreateReceiptDto {
 }
 exports.CreateReceiptDto = CreateReceiptDto;
