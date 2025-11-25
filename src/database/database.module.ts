@@ -16,6 +16,13 @@ import { DatabaseService } from './database.service';
                         ssl: {
                             rejectUnauthorized: false,
                         },
+                        // Configuración para producción
+                        max: 20,
+                        idleTimeoutMillis: 30000,
+                        connectionTimeoutMillis: 10000,
+                        // Forzar IPv4
+                        host: 'db.sarchgjfiabbhnuaktdr.supabase.co',
+                        family: 4,
                     });
                 }
                 return null;
