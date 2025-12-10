@@ -26,19 +26,47 @@ export class ChecksService {
           status,
           payer
         )
-        VALUES ($1,$2,$3,$4,$5, COALESCE($6,0), COALESCE($7,0), 'COMPRADO', $8)   
+        VALUES ($1::currency, $2::date, $3::date, $4::numeric, $5::numeric, COALESCE($6::numeric,0), COALESCE($7::numeric,0), 'COMPRADO'::check_status, $8::text)   
         RETURNING *;
         `;
-        const { rows: check } = await client.query(insertCheckQuery, [
-          createCheckDto.currency,
+        // Validar que currency sea válido
+        if (!['UYU', 'USD'].includes(createCheckDto.currency)) {
+          throw new Error(`Currency inválida: ${createCheckDto.currency}. Debe ser UYU o USD`);
+        }
+
+        // Validar que face_value >= purchase_price
+        const faceValue = Number(createCheckDto.face_value);
+        const purchasePrice = Number(createCheckDto.purchase_price);
+        if (faceValue < purchasePrice) {
+          throw new BadRequestException(`El valor del cheque (${faceValue}) debe ser mayor o igual al precio de compra (${purchasePrice})`);
+        }
+
+        // Log para debug
+        console.log('CreateCheckDto values:', {
+          currency: createCheckDto.currency,
+          purchase_date: createCheckDto.purchase_date,
+          maturity_date: createCheckDto.maturity_date,
+          face_value: createCheckDto.face_value,
+          purchase_price: createCheckDto.purchase_price,
+          transfer_fee: createCheckDto.transfer_fee,
+          platform_fee: createCheckDto.platform_fee,
+          issuer: createCheckDto.issuer,
+        });
+
+        const queryParams = [
+          createCheckDto.currency, // Ya validado que es UYU o USD
           createCheckDto.purchase_date,
           createCheckDto.maturity_date,
-          createCheckDto.face_value,
-          createCheckDto.purchase_price,
-          createCheckDto.transfer_fee ?? 0,
-          createCheckDto.platform_fee ?? 0,
-          createCheckDto.issuer,
-        ]);
+          Number(createCheckDto.face_value),
+          Number(createCheckDto.purchase_price),
+          Number(createCheckDto.transfer_fee ?? 0),
+          Number(createCheckDto.platform_fee ?? 0),
+          createCheckDto.issuer || null,
+        ];
+
+        console.log('Query parameters:', queryParams);
+
+        const { rows: check } = await client.query(insertCheckQuery, queryParams);
         if(check.length === 0){
           throw new NotFoundException('Cheque no creado');
         }
@@ -49,14 +77,14 @@ export class ChecksService {
         const fundId = fundAccounts[0].id;
 
         await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-          values ($1, $2::date, 'COMPRA_CHEQUE', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMPRA_CHEQUE', -createCheckDto.purchase_price, check[0].id]);
+          values ($1::integer, $2::date, 'COMPRA_CHEQUE', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMPRA_CHEQUE', -Number(createCheckDto.purchase_price), check[0].id]);
         if(Number(check[0].platform_fee) > 0){
           await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-            values ($1, $2::date, 'COMISION_MIFINANZAS', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMISION_PLATAFORMA', -Number(check[0].platform_fee), check[0].id]);
+            values ($1::integer, $2::date, 'COMISION_MIFINANZAS', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMISION_PLATAFORMA', -Number(check[0].platform_fee), check[0].id]);
         }
         if(Number(check[0].transfer_fee) > 0){
           await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-            values ($1, $2::date, 'COMISION_BANCARIA', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMISION_TRANSFERENCIA', -Number(check[0].transfer_fee), check[0].id]);
+            values ($1::integer, $2::date, 'COMISION_BANCARIA', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMISION_TRANSFERENCIA', -Number(check[0].transfer_fee), check[0].id]);
         }
 
 
@@ -95,7 +123,7 @@ export class ChecksService {
             `INSERT INTO public.check_participations
                (check_id, user_id, share, basis_user_balance, basis_total_balance)
              VALUES
-               ($1, $2, $3, $4, $5);`,
+               ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric);`,
             [
               check[0].id,
               b.user_id,
@@ -148,8 +176,6 @@ export class ChecksService {
     const client = await this.databaseService.getClient();
     try {
       await client.query('BEGIN');
-
-      // Verificar que el cheque existe
       const { rows: existingCheck } = await client.query(
         `SELECT * FROM public.checks WHERE id = $1`,
         [id]
@@ -161,23 +187,39 @@ export class ChecksService {
       const check = existingCheck[0];
       const previousStatus = check.status;
 
-      // Construir la query de actualización dinámicamente
+      //valido que el cheque no este en estado COBRADO
+      if (check.status === CheckStatus.COBRADO) {
+        throw new BadRequestException('El cheque ya esta en estado COBRADO');
+      }
+      /*
+      {
+  "status": "COBRADO",
+  "platform_fee": 50
+}
+      */
+
+      // guardo campos a actualizar en un array
+      // status = $1, platform_fee = $2
       const updateFields: string[] = [];
+      //["Cobrado", 50]
       const updateValues: any[] = [];
+      //1, 2
       let paramIndex = 1;
 
+
+      //hay algo que actualizar? push sino no hace nada
       if (updateCheckDto.status !== undefined) {
-        updateFields.push(`status = $${paramIndex++}`);
+        updateFields.push(`status = $${paramIndex++}`); //status = $1
         updateValues.push(updateCheckDto.status);
       }
 
       if (updateCheckDto.maturity_date !== undefined) {
-        updateFields.push(`maturity_date = $${paramIndex++}`);
+        updateFields.push(`maturity_date = $${paramIndex++}`); //maturity_date = $2
         updateValues.push(updateCheckDto.maturity_date);
       }
 
       if (updateCheckDto.platform_fee !== undefined) {
-        updateFields.push(`platform_fee = $${paramIndex++}`);
+        updateFields.push(`platform_fee = $${paramIndex++}`); //platform_fee = $3
         updateValues.push(updateCheckDto.platform_fee);
       }
 
@@ -198,9 +240,10 @@ export class ChecksService {
 
       // Agregar el ID al final para el WHERE
       updateValues.push(id);
+      //
       const updateQuery = `
         UPDATE public.checks
-        SET ${updateFields.join(', ')}
+        SET ${updateFields.join(', ')} 
         WHERE id = $${paramIndex}
         RETURNING *;
       `;
@@ -208,6 +251,87 @@ export class ChecksService {
       const { rows: updatedCheck } = await client.query(updateQuery, updateValues);
 
       // Si el estado cambió a COBRADO, crear movimiento de caja y asignar ganancias
+
+      if(updateCheckDto.status === CheckStatus.RECHAZADO) {
+        await client.query(`UPDATE public.checks
+           SET status = 'RECHAZADO' WHERE id = $1`, [id]);
+        await client.query(`update cash_movements
+           set description = 'CHEQUE RECHAZADO',
+            amount = 0 where related_check = $1`, [id]);
+          }
+
+      if(updateCheckDto.status === 'RECUPERADO') {
+        if (!updateCheckDto.recovered_amount || updateCheckDto.recovered_amount <= 0) {
+          throw new Error('El monto recuperado debe ser mayor a 0');
+        }
+
+        // Obtener el total de recuperaciones previas
+        const { rows: previousRecoveries } = await client.query(
+          `SELECT COALESCE(SUM(recovered_amount), 0) as total_recovered FROM public.check_recoveries WHERE check_id = $1`,
+          [id]
+        );
+        const totalPreviouslyRecovered = Number(previousRecoveries[0]?.total_recovered || 0);
+        const newRecoveryAmount = Number(updateCheckDto.recovered_amount);
+        const totalAfterRecovery = totalPreviouslyRecovered + newRecoveryAmount;
+
+        // Validar que no se exceda el valor nominal
+        if (totalAfterRecovery > Number(check.face_value)) {
+          throw new Error(`El total de recuperaciones (${totalAfterRecovery}) no puede exceder el valor nominal del cheque (${check.face_value})`);
+        }
+
+        // Registrar la nueva recuperación
+        await client.query(
+          `INSERT INTO public.check_recoveries (check_id, recovery_date, recovered_amount, description)
+           VALUES ($1, $2::date, $3, $4)`,
+          [
+            id, 
+            updateCheckDto.settled_date || new Date().toISOString().split('T')[0], 
+            newRecoveryAmount,
+            `Recuperación parcial - Monto: ${newRecoveryAmount}`
+          ]
+        );
+
+        // Determinar el nuevo estado del cheque
+        let newStatus;
+        if (totalAfterRecovery >= Number(check.face_value)) {
+          newStatus = 'RECUPERADO_COMPLETO';
+        } else {
+          newStatus = 'RECUPERADO_PARCIAL';
+        }
+
+        // Actualizar el estado del cheque
+        await client.query(`UPDATE public.checks SET status = $1 WHERE id = $2`, [newStatus, id]);
+
+        // Obtener el fondo asociado para crear el movimiento de caja
+        const { rows: fundAccounts } = await client.query(
+          `SELECT * FROM fund_accounts WHERE currency = $1`,
+          [check.currency]
+        );
+
+        if (fundAccounts.length === 0) {
+          throw new NotFoundException('Fondo no encontrado');
+        }
+
+        const fundId = fundAccounts[0].id;
+
+        // Crear movimiento de caja positivo por el monto recuperado
+        await client.query(
+          `INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
+           VALUES ($1, $2::date, 'RECUPERACION_CHEQUE', $3, $4, $5)`,
+          [
+            fundId, 
+            updateCheckDto.settled_date || new Date().toISOString().split('T')[0], 
+            `Recuperación ${newStatus === 'RECUPERADO_COMPLETO' ? 'completa' : 'parcial'} de cheque`,
+            newRecoveryAmount, 
+            id
+          ]
+        );
+
+        // Si es recuperación completa, calcular y distribuir pérdidas/ganancias
+        if (newStatus === 'RECUPERADO_COMPLETO') {
+          await this.handleCompleteRecoveryProfitDistribution(client, id, check, totalAfterRecovery, updateCheckDto.settled_date);
+        }
+      }
       if (updateCheckDto.status === CheckStatus.COBRADO && previousStatus !== CheckStatus.COBRADO) {
         if (!updateCheckDto.settled_date) {
           throw new Error('La fecha de cobro (settled_date) es requerida cuando el estado es COBRADO');
@@ -302,6 +426,74 @@ export class ChecksService {
     }
   }
 
+  private async handleCompleteRecoveryProfitDistribution(
+    client: any, 
+    checkId: string, 
+    check: any, 
+    totalRecovered: number, 
+    settlementDate?: Date
+  ) {
+    // Usar valores actualizados del cheque
+    const transferFee = Number(check.transfer_fee || 0);
+    const platformFee = Number(check.platform_fee || 0);
+
+    // Calcular la ganancia/pérdida: total_recuperado - purchase_price - fees
+    const profitOrLoss = totalRecovered - Number(check.purchase_price) - transferFee - platformFee;
+
+    // Obtener todas las participaciones del cheque
+    const { rows: participations } = await client.query(
+      `SELECT user_id, share FROM public.check_participations WHERE check_id = $1`,
+      [checkId]
+    );
+
+    if (participations.length === 0) {
+      throw new NotFoundException('No se encontraron participaciones para este cheque');
+    }
+
+    // Distribuir la ganancia/pérdida entre los participantes según su share
+    const allocationDate = settlementDate || new Date().toISOString().split('T')[0];
+
+    for (const participation of participations) {
+      const userShare = Number(participation.share);
+      const allocationAmount = Number((profitOrLoss * userShare).toFixed(2));
+
+      // Insertar asignación en profit_allocations (puede ser negativa si es pérdida)
+      await client.query(
+        `INSERT INTO public.profit_allocations 
+         (check_id, user_id, currency, allocation_amount, allocation_date)
+         VALUES ($1, $2, $3, $4, $5::date)`,
+        [
+          checkId,
+          participation.user_id,
+          check.currency,
+          allocationAmount,
+          allocationDate
+        ]
+      );
+
+      // Crear transacción de usuario (CONTRIBUTION si es ganancia, podría ser negativa si es pérdida)
+      const transactionType = allocationAmount >= 0 ? 'CONTRIBUTION' : 'WITHDRAWAL';
+      const transactionAmount = Math.abs(allocationAmount);
+      const description = allocationAmount >= 0 
+        ? `Ganancia por recuperación completa de cheque` 
+        : `Pérdida por recuperación parcial de cheque`;
+
+      await client.query(
+        `INSERT INTO public.user_transactions
+         (user_id, currency, tx_type, amount, tx_date, description)
+         VALUES ($1, $2, $3, $4, $5::date, $6)`,
+        [
+          participation.user_id,
+          check.currency,
+          transactionType,
+          transactionAmount,
+          allocationDate,
+          description
+        ]
+      );
+    }
+  }
+
   remove(id: number) {
     return `This action removes a #${id} check`;
   }
@@ -314,6 +506,28 @@ export class ChecksService {
       return rows;
     } catch (error) {
       throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getCheckRecoveries(checkId: string) {
+    const client = await this.databaseService.getClient();
+    try {
+      const { rows: recoveries } = await client.query(
+        `SELECT * FROM public.check_recoveries WHERE check_id = $1 ORDER BY recovery_date DESC`,
+        [checkId]
+      );
+
+      const { rows: totalRecovered } = await client.query(
+        `SELECT COALESCE(SUM(recovered_amount), 0) as total_recovered FROM public.check_recoveries WHERE check_id = $1`,
+        [checkId]
+      );
+
+      return {
+        recoveries,
+        totalRecovered: Number(totalRecovered[0]?.total_recovered || 0)
+      };
     } finally {
       client.release();
     }

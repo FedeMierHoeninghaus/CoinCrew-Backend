@@ -17,24 +17,20 @@ exports.DatabaseModule = DatabaseModule;
 exports.DatabaseModule = DatabaseModule = __decorate([
     (0, common_1.Global)(),
     (0, common_1.Module)({
-        providers: [
-            {
+        providers: [{
                 provide: 'DATABASE_POOL',
                 useFactory: (configService) => {
-                    const connectionString = configService.get('DATABASE_URL');
-                    if (connectionString) {
-                        return new pg_1.Pool({
-                            connectionString,
-                            ssl: {
-                                rejectUnauthorized: false,
-                            },
-                        });
-                    }
-                    return null;
+                    return new pg_1.Pool({
+                        host: configService.get('DB_HOST'),
+                        port: configService.get('DB_PORT'),
+                        user: configService.get('DB_USER'),
+                        password: configService.get('DB_PASSWORD'),
+                        database: configService.get('DB_NAME'),
+                    });
                 },
                 inject: [config_1.ConfigService],
-            }, database_service_1.DatabaseService,
-        ],
+            },
+            database_service_1.DatabaseService],
         exports: ['DATABASE_POOL', database_service_1.DatabaseService],
     })
 ], DatabaseModule);

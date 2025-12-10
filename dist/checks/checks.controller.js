@@ -22,27 +22,25 @@ let ChecksController = class ChecksController {
         this.checksService = checksService;
     }
     create(createCheckDto) {
-        console.log('createCheckDto', createCheckDto);
         return this.checksService.create(createCheckDto);
     }
     findAll() {
         return this.checksService.findAll();
     }
     findOne(id) {
-        console.log('id', id);
         return this.checksService.findOne(id);
     }
     update(id, updateCheckDto) {
-        console.log('updateCheckDto', updateCheckDto);
         return this.checksService.update(id, updateCheckDto);
     }
     remove(id) {
         return this.checksService.remove(+id);
     }
     getMovements(id) {
-        console.log('getMovements controller');
-        console.log('id', id);
         return this.checksService.getMovements(id);
+    }
+    getRecoveries(id) {
+        return this.checksService.getCheckRecoveries(id);
     }
 };
 exports.ChecksController = ChecksController;
@@ -88,6 +86,13 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], ChecksController.prototype, "getMovements", null);
+__decorate([
+    (0, common_1.Get)('recoveries/:id'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], ChecksController.prototype, "getRecoveries", null);
 exports.ChecksController = ChecksController = __decorate([
     (0, common_1.Controller)('checks'),
     __metadata("design:paramtypes", [checks_service_1.ChecksService])

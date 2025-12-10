@@ -8,7 +8,6 @@ async function createApp() {
   if (!app) {
     app = await NestFactory.create(AppModule);
     
-    // Configurar CORS
     const allowedOrigins = process.env.ALLOWED_ORIGINS 
       ? process.env.ALLOWED_ORIGINS.split(',')
       : ['http://localhost:3001'];

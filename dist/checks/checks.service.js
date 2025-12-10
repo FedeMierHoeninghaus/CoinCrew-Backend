@@ -35,19 +35,39 @@ let ChecksService = class ChecksService {
           status,
           payer
         )
-        VALUES ($1,$2,$3,$4,$5, COALESCE($6,0), COALESCE($7,0), 'COMPRADO', $8)   
+        VALUES ($1::currency, $2::date, $3::date, $4::numeric, $5::numeric, COALESCE($6::numeric,0), COALESCE($7::numeric,0), 'COMPRADO'::check_status, $8::text)   
         RETURNING *;
         `;
-            const { rows: check } = await client.query(insertCheckQuery, [
+            if (!['UYU', 'USD'].includes(createCheckDto.currency)) {
+                throw new Error(`Currency inválida: ${createCheckDto.currency}. Debe ser UYU o USD`);
+            }
+            const faceValue = Number(createCheckDto.face_value);
+            const purchasePrice = Number(createCheckDto.purchase_price);
+            if (faceValue < purchasePrice) {
+                throw new common_1.BadRequestException(`El valor del cheque (${faceValue}) debe ser mayor o igual al precio de compra (${purchasePrice})`);
+            }
+            console.log('CreateCheckDto values:', {
+                currency: createCheckDto.currency,
+                purchase_date: createCheckDto.purchase_date,
+                maturity_date: createCheckDto.maturity_date,
+                face_value: createCheckDto.face_value,
+                purchase_price: createCheckDto.purchase_price,
+                transfer_fee: createCheckDto.transfer_fee,
+                platform_fee: createCheckDto.platform_fee,
+                issuer: createCheckDto.issuer,
+            });
+            const queryParams = [
                 createCheckDto.currency,
                 createCheckDto.purchase_date,
                 createCheckDto.maturity_date,
-                createCheckDto.face_value,
-                createCheckDto.purchase_price,
-                createCheckDto.transfer_fee ?? 0,
-                createCheckDto.platform_fee ?? 0,
-                createCheckDto.issuer,
-            ]);
+                Number(createCheckDto.face_value),
+                Number(createCheckDto.purchase_price),
+                Number(createCheckDto.transfer_fee ?? 0),
+                Number(createCheckDto.platform_fee ?? 0),
+                createCheckDto.issuer || null,
+            ];
+            console.log('Query parameters:', queryParams);
+            const { rows: check } = await client.query(insertCheckQuery, queryParams);
             if (check.length === 0) {
                 throw new common_1.NotFoundException('Cheque no creado');
             }
@@ -57,14 +77,14 @@ let ChecksService = class ChecksService {
             }
             const fundId = fundAccounts[0].id;
             await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-          values ($1, $2::date, 'COMPRA_CHEQUE', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMPRA_CHEQUE', -createCheckDto.purchase_price, check[0].id]);
+          values ($1::integer, $2::date, 'COMPRA_CHEQUE', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMPRA_CHEQUE', -Number(createCheckDto.purchase_price), check[0].id]);
             if (Number(check[0].platform_fee) > 0) {
                 await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-            values ($1, $2::date, 'COMISION_MIFINANZAS', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMISION_PLATAFORMA', -Number(check[0].platform_fee), check[0].id]);
+            values ($1::integer, $2::date, 'COMISION_MIFINANZAS', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMISION_PLATAFORMA', -Number(check[0].platform_fee), check[0].id]);
             }
             if (Number(check[0].transfer_fee) > 0) {
                 await client.query(`insert into cash_movements (fund_id, movement_date, type, description, amount, related_check)
-            values ($1, $2::date, 'COMISION_BANCARIA', $3, $4, $5)`, [fundId, createCheckDto.purchase_date, 'COMISION_TRANSFERENCIA', -Number(check[0].transfer_fee), check[0].id]);
+            values ($1::integer, $2::date, 'COMISION_BANCARIA', $3, $4::numeric, $5::uuid)`, [parseInt(fundId), createCheckDto.purchase_date, 'COMISION_TRANSFERENCIA', -Number(check[0].transfer_fee), check[0].id]);
             }
             const { rows: balance } = await client.query(`WITH balances AS (
           SELECT
@@ -96,7 +116,7 @@ let ChecksService = class ChecksService {
                 await client.query(`INSERT INTO public.check_participations
                (check_id, user_id, share, basis_user_balance, basis_total_balance)
              VALUES
-               ($1, $2, $3, $4, $5);`, [
+               ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric);`, [
                     check[0].id,
                     b.user_id,
                     share,
@@ -155,6 +175,9 @@ let ChecksService = class ChecksService {
             }
             const check = existingCheck[0];
             const previousStatus = check.status;
+            if (check.status === check_status_1.CheckStatus.COBRADO) {
+                throw new common_1.BadRequestException('El cheque ya esta en estado COBRADO');
+            }
             const updateFields = [];
             const updateValues = [];
             let paramIndex = 1;
@@ -185,11 +208,61 @@ let ChecksService = class ChecksService {
             updateValues.push(id);
             const updateQuery = `
         UPDATE public.checks
-        SET ${updateFields.join(', ')}
+        SET ${updateFields.join(', ')} 
         WHERE id = $${paramIndex}
         RETURNING *;
       `;
             const { rows: updatedCheck } = await client.query(updateQuery, updateValues);
+            if (updateCheckDto.status === check_status_1.CheckStatus.RECHAZADO) {
+                await client.query(`UPDATE public.checks
+           SET status = 'RECHAZADO' WHERE id = $1`, [id]);
+                await client.query(`update cash_movements
+           set description = 'CHEQUE RECHAZADO',
+            amount = 0 where related_check = $1`, [id]);
+            }
+            if (updateCheckDto.status === 'RECUPERADO') {
+                if (!updateCheckDto.recovered_amount || updateCheckDto.recovered_amount <= 0) {
+                    throw new Error('El monto recuperado debe ser mayor a 0');
+                }
+                const { rows: previousRecoveries } = await client.query(`SELECT COALESCE(SUM(recovered_amount), 0) as total_recovered FROM public.check_recoveries WHERE check_id = $1`, [id]);
+                const totalPreviouslyRecovered = Number(previousRecoveries[0]?.total_recovered || 0);
+                const newRecoveryAmount = Number(updateCheckDto.recovered_amount);
+                const totalAfterRecovery = totalPreviouslyRecovered + newRecoveryAmount;
+                if (totalAfterRecovery > Number(check.face_value)) {
+                    throw new Error(`El total de recuperaciones (${totalAfterRecovery}) no puede exceder el valor nominal del cheque (${check.face_value})`);
+                }
+                await client.query(`INSERT INTO public.check_recoveries (check_id, recovery_date, recovered_amount, description)
+           VALUES ($1, $2::date, $3, $4)`, [
+                    id,
+                    updateCheckDto.settled_date || new Date().toISOString().split('T')[0],
+                    newRecoveryAmount,
+                    `Recuperación parcial - Monto: ${newRecoveryAmount}`
+                ]);
+                let newStatus;
+                if (totalAfterRecovery >= Number(check.face_value)) {
+                    newStatus = 'RECUPERADO_COMPLETO';
+                }
+                else {
+                    newStatus = 'RECUPERADO_PARCIAL';
+                }
+                await client.query(`UPDATE public.checks SET status = $1 WHERE id = $2`, [newStatus, id]);
+                const { rows: fundAccounts } = await client.query(`SELECT * FROM fund_accounts WHERE currency = $1`, [check.currency]);
+                if (fundAccounts.length === 0) {
+                    throw new common_1.NotFoundException('Fondo no encontrado');
+                }
+                const fundId = fundAccounts[0].id;
+                await client.query(`INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
+           VALUES ($1, $2::date, 'RECUPERACION_CHEQUE', $3, $4, $5)`, [
+                    fundId,
+                    updateCheckDto.settled_date || new Date().toISOString().split('T')[0],
+                    `Recuperación ${newStatus === 'RECUPERADO_COMPLETO' ? 'completa' : 'parcial'} de cheque`,
+                    newRecoveryAmount,
+                    id
+                ]);
+                if (newStatus === 'RECUPERADO_COMPLETO') {
+                    await this.handleCompleteRecoveryProfitDistribution(client, id, check, totalAfterRecovery, updateCheckDto.settled_date);
+                }
+            }
             if (updateCheckDto.status === check_status_1.CheckStatus.COBRADO && previousStatus !== check_status_1.CheckStatus.COBRADO) {
                 if (!updateCheckDto.settled_date) {
                     throw new Error('La fecha de cobro (settled_date) es requerida cuando el estado es COBRADO');
@@ -251,6 +324,44 @@ let ChecksService = class ChecksService {
             client.release();
         }
     }
+    async handleCompleteRecoveryProfitDistribution(client, checkId, check, totalRecovered, settlementDate) {
+        const transferFee = Number(check.transfer_fee || 0);
+        const platformFee = Number(check.platform_fee || 0);
+        const profitOrLoss = totalRecovered - Number(check.purchase_price) - transferFee - platformFee;
+        const { rows: participations } = await client.query(`SELECT user_id, share FROM public.check_participations WHERE check_id = $1`, [checkId]);
+        if (participations.length === 0) {
+            throw new common_1.NotFoundException('No se encontraron participaciones para este cheque');
+        }
+        const allocationDate = settlementDate || new Date().toISOString().split('T')[0];
+        for (const participation of participations) {
+            const userShare = Number(participation.share);
+            const allocationAmount = Number((profitOrLoss * userShare).toFixed(2));
+            await client.query(`INSERT INTO public.profit_allocations 
+         (check_id, user_id, currency, allocation_amount, allocation_date)
+         VALUES ($1, $2, $3, $4, $5::date)`, [
+                checkId,
+                participation.user_id,
+                check.currency,
+                allocationAmount,
+                allocationDate
+            ]);
+            const transactionType = allocationAmount >= 0 ? 'CONTRIBUTION' : 'WITHDRAWAL';
+            const transactionAmount = Math.abs(allocationAmount);
+            const description = allocationAmount >= 0
+                ? `Ganancia por recuperación completa de cheque`
+                : `Pérdida por recuperación parcial de cheque`;
+            await client.query(`INSERT INTO public.user_transactions
+         (user_id, currency, tx_type, amount, tx_date, description)
+         VALUES ($1, $2, $3, $4, $5::date, $6)`, [
+                participation.user_id,
+                check.currency,
+                transactionType,
+                transactionAmount,
+                allocationDate,
+                description
+            ]);
+        }
+    }
     remove(id) {
         return `This action removes a #${id} check`;
     }
@@ -263,6 +374,20 @@ let ChecksService = class ChecksService {
         }
         catch (error) {
             throw error;
+        }
+        finally {
+            client.release();
+        }
+    }
+    async getCheckRecoveries(checkId) {
+        const client = await this.databaseService.getClient();
+        try {
+            const { rows: recoveries } = await client.query(`SELECT * FROM public.check_recoveries WHERE check_id = $1 ORDER BY recovery_date DESC`, [checkId]);
+            const { rows: totalRecovered } = await client.query(`SELECT COALESCE(SUM(recovered_amount), 0) as total_recovered FROM public.check_recoveries WHERE check_id = $1`, [checkId]);
+            return {
+                recoveries,
+                totalRecovered: Number(totalRecovered[0]?.total_recovered || 0)
+            };
         }
         finally {
             client.release();

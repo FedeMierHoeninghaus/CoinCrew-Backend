@@ -13,6 +13,23 @@ exports.CreateCheckDto = void 0;
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const currency_enum_1 = require("../../common/enums/currency.enum");
+function IsFaceValueValid(validationOptions) {
+    return (0, class_validator_1.ValidateBy)({
+        name: 'isFaceValueValid',
+        validator: {
+            validate(value, args) {
+                const object = args.object;
+                const faceValue = Number(value);
+                const purchasePrice = Number(object.purchase_price);
+                return faceValue >= purchasePrice;
+            },
+            defaultMessage(args) {
+                return 'El valor del cheque debe ser mayor o igual al precio de compra';
+            }
+        },
+        ...validationOptions
+    });
+}
 class CreateCheckDto {
     constructor() {
         this.platform_fee = 0;
@@ -42,19 +59,20 @@ __decorate([
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.IsPositive)(),
+    IsFaceValueValid(),
     __metadata("design:type", Number)
 ], CreateCheckDto.prototype, "face_value", void 0);
 __decorate([
     (0, class_transformer_1.Type)(() => Number),
-    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], CreateCheckDto.prototype, "platform_fee", void 0);
 __decorate([
     (0, class_transformer_1.Type)(() => Number),
-    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], CreateCheckDto.prototype, "transfer_fee", void 0);

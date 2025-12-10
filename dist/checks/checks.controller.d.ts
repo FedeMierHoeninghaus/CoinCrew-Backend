@@ -10,4 +10,8 @@ export declare class ChecksController {
     update(id: string, updateCheckDto: UpdateCheckDto): Promise<any>;
     remove(id: string): string;
     getMovements(id: string): Promise<any[]>;
+    getRecoveries(id: string): Promise<{
+        recoveries: any[];
+        totalRecovered: number;
+    }>;
 }

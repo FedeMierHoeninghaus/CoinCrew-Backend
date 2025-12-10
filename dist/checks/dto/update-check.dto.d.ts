@@ -7,5 +7,6 @@ export declare class UpdateCheckDto extends UpdateCheckDto_base {
     transfer_fee?: number;
     settled_date?: Date;
     maturity_date?: Date;
+    recovered_amount?: number;
 }
 export {};

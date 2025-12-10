@@ -3,6 +3,7 @@ import { CreateCheckDto } from './create-check.dto';
 import { IsDateString, IsEnum, IsNumber, IsOptional, IsPositive, IsString } from 'class-validator';
 import { CheckStatus } from 'src/common/enums/check-status';
 import { Type } from 'class-transformer';
+
 export class UpdateCheckDto extends PartialType(CreateCheckDto) {
     @IsString()
     @IsEnum(CheckStatus)
@@ -11,13 +12,11 @@ export class UpdateCheckDto extends PartialType(CreateCheckDto) {
 
     @Type(() => Number)
     @IsNumber()
-    @IsPositive()
     @IsOptional()
     platform_fee?: number;
 
     @Type(() => Number)
     @IsNumber()
-    @IsPositive()
     @IsOptional()
     transfer_fee?: number;
 
@@ -28,4 +27,9 @@ export class UpdateCheckDto extends PartialType(CreateCheckDto) {
     @IsDateString()
     @IsOptional()
     maturity_date?: Date; //para el caso de las facturas
+
+    @Type(() => Number)
+    @IsNumber()
+    @IsOptional()
+    recovered_amount?: number;
 }

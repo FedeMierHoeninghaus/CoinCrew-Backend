@@ -8,6 +8,11 @@ export declare class ChecksService {
     findAll(): Promise<any[]>;
     findOne(id: string): Promise<any>;
     update(id: string, updateCheckDto: UpdateCheckDto): Promise<any>;
+    private handleCompleteRecoveryProfitDistribution;
     remove(id: number): string;
     getMovements(id: string): Promise<any[]>;
+    getCheckRecoveries(checkId: string): Promise<{
+        recoveries: any[];
+        totalRecovered: number;
+    }>;
 }
