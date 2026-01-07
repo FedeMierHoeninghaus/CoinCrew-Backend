@@ -12,11 +12,6 @@
       "src": "/(.*)",
       "dest": "/api/index.js"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "@database-url",
-    "JWT_SECRET": "@jwt-secret",
-    "ALLOWED_ORIGINS": "@allowed-origins"
-  }
+  ]
 }
 
