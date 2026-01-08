@@ -21,10 +21,21 @@ let DatabaseService = class DatabaseService {
     }
     async query(text, params) {
         const start = Date.now();
-        const res = await this.pool.query(text, params);
-        const duration = Date.now() - start;
-        console.log('Executed query', { text, duration, rows: res.rowCount });
-        return res;
+        try {
+            const res = await this.pool.query(text, params);
+            const duration = Date.now() - start;
+            console.log('Executed query', { text, duration, rows: res.rowCount });
+            return res;
+        }
+        catch (error) {
+            console.error('Database query error:', {
+                error: error.message,
+                code: error.code,
+                query: text.substring(0, 100),
+                params: params ? params.length : 0
+            });
+            throw error;
+        }
     }
     async getClient() {
         return this.pool.connect();

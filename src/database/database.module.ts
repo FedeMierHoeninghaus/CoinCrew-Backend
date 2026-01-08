@@ -8,25 +8,20 @@ import { DatabaseService } from './database.service';
     providers: [{
         provide: 'DATABASE_POOL',
         useFactory: (configService: ConfigService) => {
-            // Primero intenta usar DATABASE_URL desde ConfigService o process.env directamente
+            // Primero intenta usar DATABASE_URL (para producción/Vercel con Supabase)
             const connectionString = configService.get('DATABASE_URL') || process.env.DATABASE_URL;
             console.log('DATABASE_URL configured:', !!connectionString);
-            console.log('All env vars:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('DB_')));
             
             if (connectionString) {
-                console.log('Using DATABASE_URL connection string');
-                // Para Supabase pooler y conexiones remotas, siempre usar SSL
-                const isSupabasePooler = connectionString.includes('pooler.supabase.com') || 
-                                        connectionString.includes('supabase.co');
-                const needsSSL = connectionString.includes('sslmode=require') || 
-                               connectionString.includes('ssl=true') || 
-                               isSupabasePooler;
-                
+                console.log('Using DATABASE_URL connection string for Supabase');
+                // Para Supabase siempre usar SSL
                 return new Pool({
                     connectionString,
-                    ssl: needsSSL ? { rejectUnauthorized: false } : false,
-                    // Configuración optimizada para pooler
-                    max: 10, // Límite de conexiones para serverless
+                    ssl: {
+                        rejectUnauthorized: false,
+                    },
+                    // Configuración optimizada para serverless
+                    max: 10,
                     idleTimeoutMillis: 30000,
                     connectionTimeoutMillis: 10000,
                 });
@@ -39,15 +34,9 @@ import { DatabaseService } from './database.service';
             const dbPassword = configService.get('DB_PASSWORD') || process.env.DB_PASSWORD;
             const dbName = configService.get('DB_NAME') || process.env.DB_NAME;
             
-            console.log('Using individual DB variables:', {
-                host: dbHost || 'localhost',
-                port: dbPort || 5432,
-                user: dbUser ? '***' : 'not set',
-                password: dbPassword ? '***' : 'not set',
-                database: dbName || 'not set'
-            });
+            console.log('Using individual DB variables for local development');
             
-            if (!dbHost && !dbUser && !dbName && !connectionString) {
+            if (!dbHost && !dbUser && !dbName) {
                 const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL in Vercel Environment Variables.';
                 console.error(errorMsg);
                 throw new Error(errorMsg);

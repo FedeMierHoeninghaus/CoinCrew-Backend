@@ -3,6 +3,7 @@ import { loginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 export declare class AuthController {
     private readonly authService;
+    private readonly logger;
     constructor(authService: AuthService);
     register(registerDto: RegisterDto): Promise<{
         access_token: string;

@@ -8,37 +8,51 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const user_service_1 = require("../user/user.service");
-let AuthService = class AuthService {
+let AuthService = AuthService_1 = class AuthService {
     constructor(userService, jwtService) {
         this.userService = userService;
         this.jwtService = jwtService;
+        this.logger = new common_1.Logger(AuthService_1.name);
     }
     async register(registerDto) {
-        const user = await this.userService.createUser(registerDto.first_name, registerDto.last_name, registerDto.email, registerDto.password);
-        const payload = { sub: user.id, email: user.email };
-        const access_token = await this.jwtService.signAsync(payload);
-        return {
-            access_token,
-            user: user,
-        };
+        try {
+            const user = await this.userService.createUser(registerDto.first_name, registerDto.last_name, registerDto.email, registerDto.password);
+            const payload = { sub: user.id, email: user.email };
+            const access_token = await this.jwtService.signAsync(payload);
+            return {
+                access_token,
+                user: user,
+            };
+        }
+        catch (error) {
+            this.logger.error('Error en register:', error);
+            throw error;
+        }
     }
     async login(loginDto) {
-        const user = await this.userService.validateUser(loginDto.email, loginDto.password);
-        const payload = { sub: user.id, email: user.email };
-        const access_token = await this.jwtService.signAsync(payload);
-        return {
-            access_token,
-            user: user,
-        };
+        try {
+            const user = await this.userService.validateUser(loginDto.email, loginDto.password);
+            const payload = { sub: user.id, email: user.email };
+            const access_token = await this.jwtService.signAsync(payload);
+            return {
+                access_token,
+                user: user,
+            };
+        }
+        catch (error) {
+            this.logger.error('Error en login:', error);
+            throw error;
+        }
     }
 };
 exports.AuthService = AuthService;
-exports.AuthService = AuthService = __decorate([
+exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [user_service_1.UserService,
         jwt_1.JwtService])

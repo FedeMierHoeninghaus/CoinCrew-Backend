@@ -5,6 +5,7 @@ import { UserService } from 'src/user/user.service';
 export declare class AuthService {
     private readonly userService;
     private readonly jwtService;
+    private readonly logger;
     constructor(userService: UserService, jwtService: JwtService);
     register(registerDto: RegisterDto): Promise<{
         access_token: string;

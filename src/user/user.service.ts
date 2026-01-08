@@ -49,17 +49,31 @@ export class UserService {
 
     //-----------validacuib del user-----------------------
     async validateUser(email: string, password: string){
-        const {rows, rowCount} = await this.databaseService.query('SELECT * FROM users WHERE email = $1', [email]);
-        if(rowCount === 0){
-            throw new UnauthorizedException('Credenciales incorrectas');
+        try {
+            console.log('Validating user:', email);
+            const {rows, rowCount} = await this.databaseService.query('SELECT * FROM users WHERE email = $1', [email]);
+            console.log('Query result:', { rowCount, hasRows: rows.length > 0 });
+            
+            if(rowCount === 0){
+                console.log('User not found:', email);
+                throw new UnauthorizedException('Credenciales incorrectas');
+            }
+            const user = rows[0];
+            const isPasswordValid = await bcrypt.compare(password, user.password);
+            console.log('Password valid:', isPasswordValid);
+            
+            if(!isPasswordValid){
+                throw new UnauthorizedException('Credenciales incorrectas');
+            }
+            const {password: _, ...safeUser} = user;
+            return safeUser;
+        } catch (error) {
+            console.error('Error in validateUser:', error);
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
+            throw new UnauthorizedException('Error al validar usuario: ' + error.message);
         }
-        const user = rows[0];
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if(!isPasswordValid){
-            throw new UnauthorizedException('Credenciales incorrectas');
-        }
-        const {password: _, ...safeUser} = user;
-        return safeUser;
     }
 
 
