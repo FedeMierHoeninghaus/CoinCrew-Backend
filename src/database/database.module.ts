@@ -10,7 +10,10 @@ import { DatabaseService } from './database.service';
         useFactory: (configService: ConfigService) => {
             // Primero intenta usar DATABASE_URL (para producción/Vercel)
             const connectionString = configService.get('DATABASE_URL');
+            console.log('DATABASE_URL configured:', !!connectionString);
+            
             if (connectionString) {
+                console.log('Using DATABASE_URL connection string');
                 return new Pool({
                     connectionString,
                     ssl: connectionString.includes('sslmode=require') || connectionString.includes('ssl=true') 
@@ -18,13 +21,32 @@ import { DatabaseService } from './database.service';
                         : false,
                 });
             }
+            
             // Fallback a variables individuales (para desarrollo local)
+            const dbHost = configService.get('DB_HOST');
+            const dbPort = configService.get('DB_PORT');
+            const dbUser = configService.get('DB_USER');
+            const dbPassword = configService.get('DB_PASSWORD');
+            const dbName = configService.get('DB_NAME');
+            
+            console.log('Using individual DB variables:', {
+                host: dbHost || 'localhost',
+                port: dbPort || 5432,
+                user: dbUser ? '***' : 'not set',
+                password: dbPassword ? '***' : 'not set',
+                database: dbName || 'not set'
+            });
+            
+            if (!dbHost && !dbUser && !dbName) {
+                console.error('ERROR: No database configuration found. Please set DATABASE_URL or individual DB variables.');
+            }
+            
             return new Pool({
-                host: configService.get('DB_HOST') || 'localhost',
-                port: configService.get('DB_PORT') || 5432,
-                user: configService.get('DB_USER'),
-                password: configService.get('DB_PASSWORD'),
-                database: configService.get('DB_NAME'),
+                host: dbHost || 'localhost',
+                port: dbPort ? parseInt(dbPort) : 5432,
+                user: dbUser,
+                password: dbPassword,
+                database: dbName,
             });
         },
         inject: [ConfigService],
