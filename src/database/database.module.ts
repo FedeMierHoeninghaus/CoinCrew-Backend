@@ -8,9 +8,10 @@ import { DatabaseService } from './database.service';
     providers: [{
         provide: 'DATABASE_POOL',
         useFactory: (configService: ConfigService) => {
-            // Primero intenta usar DATABASE_URL (para producción/Vercel)
-            const connectionString = configService.get('DATABASE_URL');
+            // Primero intenta usar DATABASE_URL desde ConfigService o process.env directamente
+            const connectionString = configService.get('DATABASE_URL') || process.env.DATABASE_URL;
             console.log('DATABASE_URL configured:', !!connectionString);
+            console.log('All env vars:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('DB_')));
             
             if (connectionString) {
                 console.log('Using DATABASE_URL connection string');
@@ -23,11 +24,11 @@ import { DatabaseService } from './database.service';
             }
             
             // Fallback a variables individuales (para desarrollo local)
-            const dbHost = configService.get('DB_HOST');
-            const dbPort = configService.get('DB_PORT');
-            const dbUser = configService.get('DB_USER');
-            const dbPassword = configService.get('DB_PASSWORD');
-            const dbName = configService.get('DB_NAME');
+            const dbHost = configService.get('DB_HOST') || process.env.DB_HOST;
+            const dbPort = configService.get('DB_PORT') || process.env.DB_PORT;
+            const dbUser = configService.get('DB_USER') || process.env.DB_USER;
+            const dbPassword = configService.get('DB_PASSWORD') || process.env.DB_PASSWORD;
+            const dbName = configService.get('DB_NAME') || process.env.DB_NAME;
             
             console.log('Using individual DB variables:', {
                 host: dbHost || 'localhost',
@@ -37,8 +38,10 @@ import { DatabaseService } from './database.service';
                 database: dbName || 'not set'
             });
             
-            if (!dbHost && !dbUser && !dbName) {
-                console.error('ERROR: No database configuration found. Please set DATABASE_URL or individual DB variables.');
+            if (!dbHost && !dbUser && !dbName && !connectionString) {
+                const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL in Vercel Environment Variables.';
+                console.error(errorMsg);
+                throw new Error(errorMsg);
             }
             
             return new Pool({
