@@ -15,11 +15,20 @@ import { DatabaseService } from './database.service';
             
             if (connectionString) {
                 console.log('Using DATABASE_URL connection string');
+                // Para Supabase pooler y conexiones remotas, siempre usar SSL
+                const isSupabasePooler = connectionString.includes('pooler.supabase.com') || 
+                                        connectionString.includes('supabase.co');
+                const needsSSL = connectionString.includes('sslmode=require') || 
+                               connectionString.includes('ssl=true') || 
+                               isSupabasePooler;
+                
                 return new Pool({
                     connectionString,
-                    ssl: connectionString.includes('sslmode=require') || connectionString.includes('ssl=true') 
-                        ? { rejectUnauthorized: false }
-                        : false,
+                    ssl: needsSSL ? { rejectUnauthorized: false } : false,
+                    // Configuración optimizada para pooler
+                    max: 10, // Límite de conexiones para serverless
+                    idleTimeoutMillis: 30000,
+                    connectionTimeoutMillis: 10000,
                 });
             }
             
