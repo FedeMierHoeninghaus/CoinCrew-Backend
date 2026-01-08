@@ -8,12 +8,20 @@ import { DatabaseService } from './database.service';
     providers: [{
         provide: 'DATABASE_POOL',
         useFactory: (configService: ConfigService) => {
-            // Primero intenta usar DATABASE_URL (para producción/Vercel con Supabase)
-            const connectionString = configService.get('DATABASE_URL') || process.env.DATABASE_URL;
-            console.log('DATABASE_URL configured:', !!connectionString);
+            // Leer DATABASE_URL directamente de process.env primero (para Vercel)
+            // Luego intentar desde ConfigService (para desarrollo local con .env)
+            const connectionString = process.env.DATABASE_URL || configService.get('DATABASE_URL');
+            
+            console.log('=== DATABASE CONFIGURATION ===');
+            console.log('DATABASE_URL from process.env:', !!process.env.DATABASE_URL);
+            console.log('DATABASE_URL from configService:', !!configService.get('DATABASE_URL'));
+            console.log('Final DATABASE_URL:', !!connectionString);
+            if (connectionString) {
+                console.log('DATABASE_URL host:', connectionString.match(/@([^:]+)/)?.[1] || 'unknown');
+            }
             
             if (connectionString) {
-                console.log('Using DATABASE_URL connection string for Supabase');
+                console.log('✅ Using DATABASE_URL connection string for Supabase');
                 // Para Supabase siempre usar SSL
                 return new Pool({
                     connectionString,
@@ -28,16 +36,27 @@ import { DatabaseService } from './database.service';
             }
             
             // Fallback a variables individuales (para desarrollo local)
-            const dbHost = configService.get('DB_HOST') || process.env.DB_HOST;
-            const dbPort = configService.get('DB_PORT') || process.env.DB_PORT;
-            const dbUser = configService.get('DB_USER') || process.env.DB_USER;
-            const dbPassword = configService.get('DB_PASSWORD') || process.env.DB_PASSWORD;
-            const dbName = configService.get('DB_NAME') || process.env.DB_NAME;
+            const dbHost = process.env.DB_HOST || configService.get('DB_HOST');
+            const dbPort = process.env.DB_PORT || configService.get('DB_PORT');
+            const dbUser = process.env.DB_USER || configService.get('DB_USER');
+            const dbPassword = process.env.DB_PASSWORD || configService.get('DB_PASSWORD');
+            const dbName = process.env.DB_NAME || configService.get('DB_NAME');
             
-            console.log('Using individual DB variables for local development');
+            console.log('⚠️ Using individual DB variables for local development');
+            console.log('DB_HOST:', dbHost || 'not set');
+            console.log('DB_PORT:', dbPort || 'not set');
+            console.log('DB_USER:', dbUser ? '***' : 'not set');
+            console.log('DB_NAME:', dbName || 'not set');
+            
+            // En producción (Vercel), si no hay DATABASE_URL, lanzar error
+            if (process.env.VERCEL && !connectionString) {
+                const errorMsg = 'ERROR: DATABASE_URL is required in Vercel Environment Variables but was not found. Please configure it in Vercel Dashboard → Settings → Environment Variables.';
+                console.error(errorMsg);
+                throw new Error(errorMsg);
+            }
             
             if (!dbHost && !dbUser && !dbName) {
-                const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL in Vercel Environment Variables.';
+                const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL or individual DB variables.';
                 console.error(errorMsg);
                 throw new Error(errorMsg);
             }
