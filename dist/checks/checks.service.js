@@ -201,6 +201,14 @@ let ChecksService = class ChecksService {
                 updateFields.push(`settled_date = $${paramIndex++}`);
                 updateValues.push(updateCheckDto.settled_date);
             }
+            if (updateCheckDto.irpf !== undefined) {
+                updateFields.push(`irpf = $${paramIndex++}`);
+                updateValues.push(updateCheckDto.irpf);
+            }
+            else if (updateCheckDto.resguardo_irp_de_facturas !== undefined) {
+                updateFields.push(`irpf = $${paramIndex++}`);
+                updateValues.push(updateCheckDto.resguardo_irp_de_facturas);
+            }
             if (updateFields.length === 0) {
                 await client.query('COMMIT');
                 return check;
@@ -213,6 +221,29 @@ let ChecksService = class ChecksService {
         RETURNING *;
       `;
             const { rows: updatedCheck } = await client.query(updateQuery, updateValues);
+            const irpfToProcess = updateCheckDto.irpf !== undefined ? updateCheckDto.irpf :
+                (updateCheckDto.resguardo_irp_de_facturas !== undefined ? updateCheckDto.resguardo_irp_de_facturas : undefined);
+            if (irpfToProcess !== undefined) {
+                const previousIrpf = Number(check.irpf || 0);
+                const newIrpf = Number(irpfToProcess);
+                const irpfDifference = newIrpf - previousIrpf;
+                if (irpfDifference !== 0) {
+                    const { rows: fundAccounts } = await client.query(`SELECT * FROM fund_accounts WHERE currency = $1`, [check.currency]);
+                    if (fundAccounts.length === 0) {
+                        throw new common_1.NotFoundException('Fondo no encontrado');
+                    }
+                    const fundId = fundAccounts[0].id;
+                    const movementDate = updateCheckDto.settled_date || check.purchase_date || new Date().toISOString().split('T')[0];
+                    await client.query(`INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
+             VALUES ($1::integer, $2::date, 'IRPF', $3, $4::numeric, $5::uuid)`, [
+                        parseInt(fundId),
+                        movementDate,
+                        `IRPF - Ajuste: ${irpfDifference > 0 ? 'Aumento' : 'Disminución'} de ${Math.abs(irpfDifference)}`,
+                        -irpfDifference,
+                        id
+                    ]);
+                }
+            }
             if (updateCheckDto.status === check_status_1.CheckStatus.RECHAZADO) {
                 await client.query(`UPDATE public.checks
            SET status = 'RECHAZADO' WHERE id = $1`, [id]);

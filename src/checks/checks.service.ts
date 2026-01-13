@@ -232,6 +232,14 @@ export class ChecksService {
         updateFields.push(`settled_date = $${paramIndex++}`);
         updateValues.push(updateCheckDto.settled_date);
       }
+      // IRPF: priorizar el campo 'irpf' sobre 'resguardo_irp_de_facturas' si ambos están definidos
+      if (updateCheckDto.irpf !== undefined) {
+        updateFields.push(`irpf = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.irpf);
+      } else if (updateCheckDto.resguardo_irp_de_facturas !== undefined) {
+        updateFields.push(`irpf = $${paramIndex++}`);
+        updateValues.push(updateCheckDto.resguardo_irp_de_facturas);
+      }
 
       if (updateFields.length === 0) {
         await client.query('COMMIT');
@@ -250,7 +258,39 @@ export class ChecksService {
 
       const { rows: updatedCheck } = await client.query(updateQuery, updateValues);
 
-      // Si el estado cambió a COBRADO, crear movimiento de caja y asignar ganancias
+      const irpfToProcess = updateCheckDto.irpf !== undefined ? updateCheckDto.irpf : 
+                           (updateCheckDto.resguardo_irp_de_facturas !== undefined ? updateCheckDto.resguardo_irp_de_facturas : undefined);
+      
+      if (irpfToProcess !== undefined) {
+        const previousIrpf = Number(check.irpf || 0);
+        const newIrpf = Number(irpfToProcess);
+        const irpfDifference = newIrpf - previousIrpf;
+
+        if (irpfDifference !== 0) {
+          const { rows: fundAccounts } = await client.query(
+            `SELECT * FROM fund_accounts WHERE currency = $1`,
+            [check.currency]
+          );
+
+          if (fundAccounts.length === 0) {
+            throw new NotFoundException('Fondo no encontrado');
+          }
+
+          const fundId = fundAccounts[0].id;
+          const movementDate = updateCheckDto.settled_date || check.purchase_date || new Date().toISOString().split('T')[0];  
+          await client.query(
+            `INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
+             VALUES ($1::integer, $2::date, 'IRPF', $3, $4::numeric, $5::uuid)`,
+            [
+              parseInt(fundId),
+              movementDate,
+              `IRPF - Ajuste: ${irpfDifference > 0 ? 'Aumento' : 'Disminución'} de ${Math.abs(irpfDifference)}`,
+              -irpfDifference, // Negativo porque es un costo
+              id
+            ]
+          );
+        }
+      }
 
       if(updateCheckDto.status === CheckStatus.RECHAZADO) {
         await client.query(`UPDATE public.checks
@@ -265,7 +305,6 @@ export class ChecksService {
           throw new Error('El monto recuperado debe ser mayor a 0');
         }
 
-        // Obtener el total de recuperaciones previas
         const { rows: previousRecoveries } = await client.query(
           `SELECT COALESCE(SUM(recovered_amount), 0) as total_recovered FROM public.check_recoveries WHERE check_id = $1`,
           [id]
@@ -274,12 +313,10 @@ export class ChecksService {
         const newRecoveryAmount = Number(updateCheckDto.recovered_amount);
         const totalAfterRecovery = totalPreviouslyRecovered + newRecoveryAmount;
 
-        // Validar que no se exceda el valor nominal
         if (totalAfterRecovery > Number(check.face_value)) {
           throw new Error(`El total de recuperaciones (${totalAfterRecovery}) no puede exceder el valor nominal del cheque (${check.face_value})`);
         }
 
-        // Registrar la nueva recuperación
         await client.query(
           `INSERT INTO public.check_recoveries (check_id, recovery_date, recovered_amount, description)
            VALUES ($1, $2::date, $3, $4)`,
@@ -291,7 +328,6 @@ export class ChecksService {
           ]
         );
 
-        // Determinar el nuevo estado del cheque
         let newStatus;
         if (totalAfterRecovery >= Number(check.face_value)) {
           newStatus = 'RECUPERADO_COMPLETO';
@@ -299,10 +335,8 @@ export class ChecksService {
           newStatus = 'RECUPERADO_PARCIAL';
         }
 
-        // Actualizar el estado del cheque
         await client.query(`UPDATE public.checks SET status = $1 WHERE id = $2`, [newStatus, id]);
 
-        // Obtener el fondo asociado para crear el movimiento de caja
         const { rows: fundAccounts } = await client.query(
           `SELECT * FROM fund_accounts WHERE currency = $1`,
           [check.currency]
@@ -314,7 +348,6 @@ export class ChecksService {
 
         const fundId = fundAccounts[0].id;
 
-        // Crear movimiento de caja positivo por el monto recuperado
         await client.query(
           `INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
            VALUES ($1, $2::date, 'RECUPERACION_CHEQUE', $3, $4, $5)`,
@@ -327,7 +360,6 @@ export class ChecksService {
           ]
         );
 
-        // Si es recuperación completa, calcular y distribuir pérdidas/ganancias
         if (newStatus === 'RECUPERADO_COMPLETO') {
           await this.handleCompleteRecoveryProfitDistribution(client, id, check, totalAfterRecovery, updateCheckDto.settled_date);
         }
@@ -337,7 +369,6 @@ export class ChecksService {
           throw new Error('La fecha de cobro (settled_date) es requerida cuando el estado es COBRADO');
         }
 
-        // Obtener el fondo asociado
         const { rows: fundAccounts } = await client.query(
           `SELECT * FROM fund_accounts WHERE currency = $1`,
           [check.currency]
@@ -349,14 +380,12 @@ export class ChecksService {
 
         const fundId = fundAccounts[0].id;
 
-        // Crear movimiento de caja positivo por el valor nominal del cheque
         await client.query(
           `INSERT INTO cash_movements (fund_id, movement_date, type, description, amount, related_check)
            VALUES ($1, $2::date, 'COBRO_CHEQUE', 'Cobro de cheque', $3, $4)`,
           [fundId, updateCheckDto.settled_date, check.face_value, id]
         );
 
-        // Usar valores actualizados si están disponibles, sino los originales
         const finalCheck = updatedCheck[0] || check;
         const transferFee = updateCheckDto.transfer_fee !== undefined 
           ? updateCheckDto.transfer_fee 
@@ -365,7 +394,6 @@ export class ChecksService {
           ? updateCheckDto.platform_fee 
           : Number(finalCheck.platform_fee || 0);
 
-        // Calcular la ganancia: face_value - purchase_price - transfer_fee - platform_fee
         const profit = Number(finalCheck.face_value) 
           - Number(finalCheck.purchase_price) 
           - transferFee 

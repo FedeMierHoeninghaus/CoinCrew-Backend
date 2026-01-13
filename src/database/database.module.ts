@@ -42,12 +42,6 @@ import { DatabaseService } from './database.service';
             const dbPassword = process.env.DB_PASSWORD || configService.get('DB_PASSWORD');
             const dbName = process.env.DB_NAME || configService.get('DB_NAME');
             
-            console.log('⚠️ Using individual DB variables for local development');
-            console.log('DB_HOST:', dbHost || 'not set');
-            console.log('DB_PORT:', dbPort || 'not set');
-            console.log('DB_USER:', dbUser ? '***' : 'not set');
-            console.log('DB_NAME:', dbName || 'not set');
-            
             // En producción (Vercel), si no hay DATABASE_URL, lanzar error
             if (process.env.VERCEL && !connectionString) {
                 const errorMsg = 'ERROR: DATABASE_URL is required in Vercel Environment Variables but was not found. Please configure it in Vercel Dashboard → Settings → Environment Variables.';

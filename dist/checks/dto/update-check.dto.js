@@ -51,5 +51,17 @@ __decorate([
     (0, class_validator_1.IsNumber)(),
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
+], UpdateCheckDto.prototype, "resguardo_irp_de_facturas", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
+], UpdateCheckDto.prototype, "irpf", void 0);
+__decorate([
+    (0, class_transformer_1.Type)(() => Number),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
 ], UpdateCheckDto.prototype, "recovered_amount", void 0);
 //# sourceMappingURL=update-check.dto.js.map

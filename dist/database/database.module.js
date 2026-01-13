@@ -20,48 +20,38 @@ exports.DatabaseModule = DatabaseModule = __decorate([
         providers: [{
                 provide: 'DATABASE_POOL',
                 useFactory: (configService) => {
-                    const connectionString = configService.get('DATABASE_URL') || process.env.DATABASE_URL;
-                    console.log('DATABASE_URL configured:', !!connectionString);
-                    console.log('All env vars:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('DB_')));
+                    const connectionString = process.env.DATABASE_URL || configService.get('DATABASE_URL');
+                    console.log('=== DATABASE CONFIGURATION ===');
+                    console.log('DATABASE_URL from process.env:', !!process.env.DATABASE_URL);
+                    console.log('DATABASE_URL from configService:', !!configService.get('DATABASE_URL'));
+                    console.log('Final DATABASE_URL:', !!connectionString);
                     if (connectionString) {
-                        console.log('Using DATABASE_URL connection string');
-                        const isSupabasePooler = connectionString.includes('pooler.supabase.com') ||
-                            connectionString.includes('supabase.co');
-                        const needsSSL = connectionString.includes('sslmode=require') ||
-                            connectionString.includes('ssl=true') ||
-                            isSupabasePooler;
-                        console.log('Database connection config:', {
-                            isSupabasePooler,
-                            needsSSL,
-                            host: connectionString.match(/@([^:]+)/)?.[1] || 'unknown',
-                            port: connectionString.match(/:(\d+)\//)?.[1] || 'unknown'
-                        });
-                        const pool = new pg_1.Pool({
+                        console.log('DATABASE_URL host:', connectionString.match(/@([^:]+)/)?.[1] || 'unknown');
+                    }
+                    if (connectionString) {
+                        console.log('✅ Using DATABASE_URL connection string for Supabase');
+                        return new pg_1.Pool({
                             connectionString,
-                            ssl: needsSSL ? { rejectUnauthorized: false } : false,
+                            ssl: {
+                                rejectUnauthorized: false,
+                            },
                             max: 10,
                             idleTimeoutMillis: 30000,
                             connectionTimeoutMillis: 10000,
                         });
-                        pool.on('error', (err) => {
-                            console.error('Unexpected error on idle client', err);
-                        });
-                        return pool;
                     }
-                    const dbHost = configService.get('DB_HOST') || process.env.DB_HOST;
-                    const dbPort = configService.get('DB_PORT') || process.env.DB_PORT;
-                    const dbUser = configService.get('DB_USER') || process.env.DB_USER;
-                    const dbPassword = configService.get('DB_PASSWORD') || process.env.DB_PASSWORD;
-                    const dbName = configService.get('DB_NAME') || process.env.DB_NAME;
-                    console.log('Using individual DB variables:', {
-                        host: dbHost || 'localhost',
-                        port: dbPort || 5432,
-                        user: dbUser ? '***' : 'not set',
-                        password: dbPassword ? '***' : 'not set',
-                        database: dbName || 'not set'
-                    });
-                    if (!dbHost && !dbUser && !dbName && !connectionString) {
-                        const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL in Vercel Environment Variables.';
+                    const dbHost = process.env.DB_HOST || configService.get('DB_HOST');
+                    const dbPort = process.env.DB_PORT || configService.get('DB_PORT');
+                    const dbUser = process.env.DB_USER || configService.get('DB_USER');
+                    const dbPassword = process.env.DB_PASSWORD || configService.get('DB_PASSWORD');
+                    const dbName = process.env.DB_NAME || configService.get('DB_NAME');
+                    if (process.env.VERCEL && !connectionString) {
+                        const errorMsg = 'ERROR: DATABASE_URL is required in Vercel Environment Variables but was not found. Please configure it in Vercel Dashboard → Settings → Environment Variables.';
+                        console.error(errorMsg);
+                        throw new Error(errorMsg);
+                    }
+                    if (!dbHost && !dbUser && !dbName) {
+                        const errorMsg = 'ERROR: No database configuration found. Please set DATABASE_URL or individual DB variables.';
                         console.error(errorMsg);
                         throw new Error(errorMsg);
                     }

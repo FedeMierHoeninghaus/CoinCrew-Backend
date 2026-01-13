@@ -26,7 +26,17 @@ export class UpdateCheckDto extends PartialType(CreateCheckDto) {
 
     @IsDateString()
     @IsOptional()
-    maturity_date?: Date; //para el caso de las facturas
+    maturity_date?: Date;
+
+    @Type(() => Number)
+    @IsNumber()
+    @IsOptional()
+    resguardo_irp_de_facturas?: number;
+
+    @Type(() => Number)
+    @IsNumber()
+    @IsOptional()
+    irpf?: number;
 
     @Type(() => Number)
     @IsNumber()
